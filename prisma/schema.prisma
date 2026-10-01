@@ -8,21 +8,37 @@ datasource db {
   provider = "postgresql"
 }
 
+model Department {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  students Student[]
+  teachers Teacher[]
+
+  @@map("department")
+}
+
 model Student {
-  id               Int    @id @default(autoincrement())
+  id               Int        @id @default(autoincrement())
   name             String
-  enrollmentNumber String @unique @map("enrollment_number")
+  enrollmentNumber String     @unique @map("enrollment_number")
+  departmentId     Int        @map("department_id")
+  // Restrict: a department can't be deleted while students still belong to it
+  department       Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
 
   @@index([name])
+  @@index([departmentId])
   @@map("student")
 }
 
 model Teacher {
-  id          Int    @id @default(autoincrement())
-  name        String
-  designation String
-  expertise   String
+  id           Int        @id @default(autoincrement())
+  name         String
+  designation  String
+  expertise    String
+  departmentId Int        @map("department_id")
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
 
   @@index([name])
+  @@index([departmentId])
   @@map("teacher")
 }

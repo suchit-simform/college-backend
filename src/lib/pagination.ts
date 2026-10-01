@@ -8,6 +8,11 @@ export const listQuerySchema = z.object({
 
 export type ListQuery = z.infer<typeof listQuerySchema>;
 
+// Students and teachers can also be filtered by department
+export const memberListQuerySchema = listQuerySchema.extend({
+  departmentId: z.coerce.number().int().positive().optional(),
+});
+
 export const idParamSchema = z.object({
   id: z.coerce.number().int().positive(),
 });

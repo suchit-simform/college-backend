@@ -1,6 +1,8 @@
-type Field = { type: string; example?: unknown };
+type Field = { type?: string; example?: unknown; $ref?: string };
 
-function crudPaths(tag: string, basePath: string, schema: string) {
+type CrudOptions = { extraListParams?: object[]; deleteConflict?: boolean };
+
+function crudPaths(tag: string, basePath: string, schema: string, options: CrudOptions = {}) {
   const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
   const json = (schemaRef: object) => ({ "application/json": { schema: schemaRef } });
   const idParam = { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } };
@@ -18,6 +20,7 @@ function crudPaths(tag: string, basePath: string, schema: string) {
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
           { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 10 } },
           { name: "name", in: "query", description: "Case-insensitive partial match", schema: { type: "string" } },
+          ...(options.extraListParams ?? []),
         ],
         responses: {
           200: {
@@ -63,7 +66,13 @@ function crudPaths(tag: string, basePath: string, schema: string) {
         tags: [tag],
         summary: `Delete a ${schema.toLowerCase()}`,
         parameters: [idParam],
-        responses: { 204: { description: "Deleted" }, ...errors },
+        responses: {
+          204: { description: "Deleted" },
+          ...errors,
+          ...(options.deleteConflict && {
+            409: { description: "Still referenced by students or teachers", content: json(ref("Error")) },
+          }),
+        },
       },
     },
   };
@@ -74,31 +83,51 @@ function objectSchema(fields: Record<string, Field>, withId: boolean) {
   return { type: "object", required: Object.keys(properties), properties };
 }
 
+const departmentFields = {
+  name: { type: "string", example: "Computer Engineering" },
+};
+
+// departmentId must point at an existing department, otherwise create/update returns 400
+const departmentIdField = { departmentId: { type: "integer", example: 1 } };
+const departmentRef = { department: { $ref: "#/components/schemas/Department" } };
+
 const studentFields = {
   name: { type: "string", example: "Aarav Patel" },
   enrollmentNumber: { type: "string", example: "ENR202600001" },
+  ...departmentIdField,
 };
 
 const teacherFields = {
   name: { type: "string", example: "Dr. Meera Shah" },
   designation: { type: "string", example: "Professor" },
   expertise: { type: "string", example: "Computer Science" },
+  ...departmentIdField,
+};
+
+const departmentIdFilter = {
+  name: "departmentId",
+  in: "query",
+  description: "Only return members of this department",
+  schema: { type: "integer", minimum: 1 },
 };
 
 export const openApiSpec = {
   openapi: "3.0.3",
-  info: { title: "College Backend API", version: "1.0.0", description: "CRUD API for students and teachers" },
+  info: { title: "College Backend API", version: "1.0.0", description: "CRUD API for departments, students and teachers" },
   servers: [{ url: "/api" }],
-  tags: [{ name: "Students" }, { name: "Teachers" }],
+  tags: [{ name: "Departments" }, { name: "Students" }, { name: "Teachers" }],
   paths: {
-    ...crudPaths("Students", "/students", "Student"),
-    ...crudPaths("Teachers", "/teachers", "Teacher"),
+    ...crudPaths("Departments", "/departments", "Department", { deleteConflict: true }),
+    ...crudPaths("Students", "/students", "Student", { extraListParams: [departmentIdFilter] }),
+    ...crudPaths("Teachers", "/teachers", "Teacher", { extraListParams: [departmentIdFilter] }),
   },
   components: {
     schemas: {
-      Student: objectSchema(studentFields, true),
+      Department: objectSchema(departmentFields, true),
+      DepartmentInput: objectSchema(departmentFields, false),
+      Student: objectSchema({ ...studentFields, ...departmentRef }, true),
       StudentInput: objectSchema(studentFields, false),
-      Teacher: objectSchema(teacherFields, true),
+      Teacher: objectSchema({ ...teacherFields, ...departmentRef }, true),
       TeacherInput: objectSchema(teacherFields, false),
       PaginationMeta: {
         type: "object",

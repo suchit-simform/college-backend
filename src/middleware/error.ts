@@ -25,7 +25,7 @@ export const notFound: RequestHandler = (req, res) => {
   res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
 };
 
-export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   if (err instanceof ZodError) {
     res.status(400).json({
       error: "Validation failed",
@@ -41,6 +41,16 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     }
     if (err.code === "P2002") {
       res.status(409).json({ error: `Unique constraint failed on ${uniqueTarget(err)}` });
+      return;
+    }
+    // Foreign key: on delete the record is still referenced (onDelete: Restrict),
+    // otherwise the body points at a record that doesn't exist (e.g. unknown departmentId)
+    if (err.code === "P2003") {
+      if (req.method === "DELETE") {
+        res.status(409).json({ error: "Record is still referenced by other records" });
+      } else {
+        res.status(400).json({ error: "Referenced record does not exist" });
+      }
       return;
     }
   }
