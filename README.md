@@ -25,6 +25,10 @@ It runs in the foreground with logs. Press `Ctrl+C` to stop watching, then run `
 | http://localhost:3000/docs.json | Raw OpenAPI spec |
 | http://localhost:3000/health | Health check |
 
+### CORS
+
+Browsers may call the API only from the origins in `CORS_ORIGIN`, a comma-separated list. The default allows the college-frontend dev server (`http://localhost:5173`) and its Docker container (`http://localhost:8080`). Use `*` to allow any origin. Set it in `.env` for local runs, or in your shell before `docker compose up` (the compose file passes it to the API).
+
 ### Docker scripts
 
 | Script | What it does |

@@ -20,6 +20,7 @@ services:
     environment:
       DATABASE_URL: postgresql://college:college@db:5432/college?schema=public
       PORT: 3000
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://localhost:8080}
     ports:
       - "3000:3000"
     depends_on:
