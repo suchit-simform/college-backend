@@ -37,7 +37,7 @@ It runs in the foreground with logs. Press `Ctrl+C` to stop watching, then run `
 
 ## Endpoints
 
-`/api/departments`, `/api/students` and `/api/teachers` all have:
+All routes are versioned under `/api/v1`. `/api/v1/departments`, `/api/v1/students` and `/api/v1/teachers` all have:
 
 | Method | Path | Notes |
 | --- | --- | --- |
@@ -94,7 +94,8 @@ After changing `prisma/schema.prisma`, run `pnpm db:migrate --name <change>` to 
 ```
 prisma.config.ts   Prisma CLI config (datasource URL, migrations, seed)
 prisma/            schema, migrations, seed
-src/app.ts         express app, routes, swagger
+src/app.ts         express app, swagger, mounts /api/v1
+src/routes/        versioned routers (v1.ts mounts every module)
 src/server.ts      entry point
 src/lib/           prisma client (pg adapter), pagination and user helpers
 src/generated/     generated Prisma client (do not edit)

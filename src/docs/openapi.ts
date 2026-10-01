@@ -133,7 +133,7 @@ const memberListOptions: CrudOptions = {
 export const openApiSpec = {
   openapi: "3.0.3",
   info: { title: "College Backend API", version: "1.0.0", description: "CRUD API for departments, students and teachers" },
-  servers: [{ url: "/api" }],
+  servers: [{ url: "/api/v1" }],
   tags: [{ name: "Departments" }, { name: "Students" }, { name: "Teachers" }],
   paths: {
     ...crudPaths("Departments", "/departments", "Department", { deleteConflict: true }),
