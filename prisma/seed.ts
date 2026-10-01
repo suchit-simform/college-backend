@@ -1,9 +1,10 @@
 import { faker } from "@faker-js/faker";
 import "dotenv/config";
+import type { UserType } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/prisma";
 
 const DEPARTMENT_COUNT = 5;
-const TEACHER_COUNT = 5;
+const TEACHER_COUNT = 10;
 const STUDENT_COUNT = 500;
 
 const DEPARTMENTS = [
@@ -30,24 +31,31 @@ const EXPERTISE = [
   "Data Science",
 ];
 
+// Create one user per member and return their ids in order
+async function createUsers(count: number, userType: UserType) {
+  const users = await prisma.user.createManyAndReturn({
+    data: Array.from({ length: count }, () => ({
+      firstName: faker.person.firstName(),
+      lastName: faker.person.lastName(),
+      userType,
+    })),
+    select: { id: true },
+  });
+  return users.map((u) => u.id);
+}
+
 async function main() {
   // Pass --force to wipe and reseed; otherwise skip when data already exists
   const force = process.argv.includes("--force");
-  const [departments, students, teachers] = await Promise.all([
-    prisma.department.count(),
-    prisma.student.count(),
-    prisma.teacher.count(),
-  ]);
+  const [departments, users] = await Promise.all([prisma.department.count(), prisma.user.count()]);
 
-  if (!force && (departments > 0 || students > 0 || teachers > 0)) {
-    console.log(
-      `Seed skipped: database already has ${departments} departments, ${students} students and ${teachers} teachers`,
-    );
+  if (!force && (departments > 0 || users > 0)) {
+    console.log(`Seed skipped: database already has ${departments} departments and ${users} users`);
     return;
   }
 
   // TRUNCATE (not deleteMany) so ids restart from 1 on a forced reseed
-  await prisma.$executeRaw`TRUNCATE TABLE "student", "teacher", "department" RESTART IDENTITY`;
+  await prisma.$executeRaw`TRUNCATE TABLE "user_department", "student", "teacher", "user", "department" RESTART IDENTITY`;
 
   // Names are unique, so pick distinct ones
   await prisma.department.createMany({
@@ -55,24 +63,32 @@ async function main() {
   });
   const departmentIds = (await prisma.department.findMany({ select: { id: true } })).map((d) => d.id);
 
-  await prisma.teacher.createMany({
-    data: Array.from({ length: TEACHER_COUNT }, () => ({
-      name: faker.person.fullName(),
-      designation: faker.helpers.arrayElement(DESIGNATIONS),
-      expertise: faker.helpers.arrayElement(EXPERTISE),
-      departmentId: faker.helpers.arrayElement(departmentIds),
-    })),
+  const teacherUserIds = await createUsers(TEACHER_COUNT, "teacher");
+  const teachers = teacherUserIds.map((userId) => ({
+    userId,
+    designation: faker.helpers.arrayElement(DESIGNATIONS),
+    expertise: faker.helpers.arrayElement(EXPERTISE),
+    departmentId: faker.helpers.arrayElement(departmentIds),
+  }));
+  await prisma.teacher.createMany({ data: teachers });
+
+  const studentUserIds = await createUsers(STUDENT_COUNT, "student");
+  const students = studentUserIds.map((userId, i) => ({
+    userId,
+    enrollmentNumber: `ENR${new Date().getFullYear()}${String(i + 1).padStart(5, "0")}`,
+    departmentId: faker.helpers.arrayElement(departmentIds),
+  }));
+  await prisma.student.createMany({ data: students });
+
+  // user_department mirrors each member's department
+  await prisma.userDepartment.createMany({
+    data: [...teachers, ...students].map(({ userId, departmentId }) => ({ userId, departmentId })),
   });
 
-  await prisma.student.createMany({
-    data: Array.from({ length: STUDENT_COUNT }, (_, i) => ({
-      name: faker.person.fullName(),
-      enrollmentNumber: `ENR${new Date().getFullYear()}${String(i + 1).padStart(5, "0")}`,
-      departmentId: faker.helpers.arrayElement(departmentIds),
-    })),
-  });
-
-  console.log(`Seeded ${DEPARTMENT_COUNT} departments, ${TEACHER_COUNT} teachers and ${STUDENT_COUNT} students`);
+  console.log(
+    `Seeded ${DEPARTMENT_COUNT} departments, ${TEACHER_COUNT + STUDENT_COUNT} users ` +
+      `(${TEACHER_COUNT} teachers, ${STUDENT_COUNT} students) and their user_department rows`,
+  );
 }
 
 main()

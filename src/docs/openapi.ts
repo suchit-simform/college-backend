@@ -1,6 +1,6 @@
 type Field = { type?: string; example?: unknown; $ref?: string };
 
-type CrudOptions = { extraListParams?: object[]; deleteConflict?: boolean };
+type CrudOptions = { nameDescription?: string; extraListParams?: object[]; deleteConflict?: boolean };
 
 function crudPaths(tag: string, basePath: string, schema: string, options: CrudOptions = {}) {
   const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
@@ -19,7 +19,12 @@ function crudPaths(tag: string, basePath: string, schema: string, options: CrudO
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
           { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 10 } },
-          { name: "name", in: "query", description: "Case-insensitive partial match", schema: { type: "string" } },
+          {
+            name: "name",
+            in: "query",
+            description: options.nameDescription ?? "Case-insensitive partial match",
+            schema: { type: "string" },
+          },
           ...(options.extraListParams ?? []),
         ],
         responses: {
@@ -91,14 +96,23 @@ const departmentFields = {
 const departmentIdField = { departmentId: { type: "integer", example: 1 } };
 const departmentRef = { department: { $ref: "#/components/schemas/Department" } };
 
-const studentFields = {
-  name: { type: "string", example: "Aarav Patel" },
+// Names are sent flat on create/update but stored on the linked user, returned as `user`
+const nameFields = {
+  firstName: { type: "string", example: "Aarav" },
+  lastName: { type: "string", example: "Patel" },
+};
+const userFields = {
+  ...nameFields,
+  userType: { type: "string", enum: ["student", "teacher"], example: "student" },
+};
+const userRef = { userId: { type: "integer", example: 1 }, user: { $ref: "#/components/schemas/User" } };
+
+const studentProfileFields = {
   enrollmentNumber: { type: "string", example: "ENR202600001" },
   ...departmentIdField,
 };
 
-const teacherFields = {
-  name: { type: "string", example: "Dr. Meera Shah" },
+const teacherProfileFields = {
   designation: { type: "string", example: "Professor" },
   expertise: { type: "string", example: "Computer Science" },
   ...departmentIdField,
@@ -111,6 +125,11 @@ const departmentIdFilter = {
   schema: { type: "integer", minimum: 1 },
 };
 
+const memberListOptions: CrudOptions = {
+  nameDescription: "Case-insensitive; every word must partially match the user's first or last name",
+  extraListParams: [departmentIdFilter],
+};
+
 export const openApiSpec = {
   openapi: "3.0.3",
   info: { title: "College Backend API", version: "1.0.0", description: "CRUD API for departments, students and teachers" },
@@ -118,17 +137,18 @@ export const openApiSpec = {
   tags: [{ name: "Departments" }, { name: "Students" }, { name: "Teachers" }],
   paths: {
     ...crudPaths("Departments", "/departments", "Department", { deleteConflict: true }),
-    ...crudPaths("Students", "/students", "Student", { extraListParams: [departmentIdFilter] }),
-    ...crudPaths("Teachers", "/teachers", "Teacher", { extraListParams: [departmentIdFilter] }),
+    ...crudPaths("Students", "/students", "Student", memberListOptions),
+    ...crudPaths("Teachers", "/teachers", "Teacher", memberListOptions),
   },
   components: {
     schemas: {
       Department: objectSchema(departmentFields, true),
       DepartmentInput: objectSchema(departmentFields, false),
-      Student: objectSchema({ ...studentFields, ...departmentRef }, true),
-      StudentInput: objectSchema(studentFields, false),
-      Teacher: objectSchema({ ...teacherFields, ...departmentRef }, true),
-      TeacherInput: objectSchema(teacherFields, false),
+      User: objectSchema(userFields, true),
+      Student: objectSchema({ ...studentProfileFields, ...userRef, ...departmentRef }, true),
+      StudentInput: objectSchema({ ...nameFields, ...studentProfileFields }, false),
+      Teacher: objectSchema({ ...teacherProfileFields, ...userRef, ...departmentRef }, true),
+      TeacherInput: objectSchema({ ...nameFields, ...teacherProfileFields }, false),
       PaginationMeta: {
         type: "object",
         properties: {

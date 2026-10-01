@@ -8,37 +8,73 @@ datasource db {
   provider = "postgresql"
 }
 
+enum UserType {
+  student
+  teacher
+
+  @@map("user_type")
+}
+
+model User {
+  id          Int              @id @default(autoincrement())
+  firstName   String           @map("first_name")
+  lastName    String           @map("last_name")
+  userType    UserType         @map("user_type")
+  student     Student?
+  teacher     Teacher?
+  departments UserDepartment[]
+
+  @@index([firstName])
+  @@index([lastName])
+  @@map("user")
+}
+
 model Department {
-  id       Int       @id @default(autoincrement())
-  name     String    @unique
+  id       Int              @id @default(autoincrement())
+  name     String           @unique
   students Student[]
   teachers Teacher[]
+  users    UserDepartment[]
 
   @@map("department")
 }
 
 model Student {
   id               Int        @id @default(autoincrement())
-  name             String
   enrollmentNumber String     @unique @map("enrollment_number")
+  userId           Int        @unique @map("user_id")
+  // Cascade: deleting the user removes its student profile
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   departmentId     Int        @map("department_id")
   // Restrict: a department can't be deleted while students still belong to it
   department       Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
 
-  @@index([name])
   @@index([departmentId])
   @@map("student")
 }
 
 model Teacher {
   id           Int        @id @default(autoincrement())
-  name         String
   designation  String
   expertise    String
+  userId       Int        @unique @map("user_id")
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   departmentId Int        @map("department_id")
   department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
 
-  @@index([name])
   @@index([departmentId])
   @@map("teacher")
+}
+
+// Which departments a user belongs to; kept in sync with student/teacher.departmentId by the API
+model UserDepartment {
+  id           Int        @id @default(autoincrement())
+  userId       Int        @map("user_id")
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  departmentId Int        @map("department_id")
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, departmentId])
+  @@index([departmentId])
+  @@map("user_department")
 }

@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
-import { idParamSchema, memberListQuerySchema, nameFilter, paginate, paginationMeta } from "../../lib/pagination";
+import { idParamSchema, memberListQuerySchema, paginate, paginationMeta } from "../../lib/pagination";
+import { memberInclude as include, setUserDepartment, userFieldsSchema, userNameFilter } from "../../lib/user";
 
-const createStudentSchema = z.object({
-  name: z.string().trim().min(1),
+const createStudentSchema = userFieldsSchema.extend({
   enrollmentNumber: z.string().trim().min(1),
   departmentId: z.number().int().positive(),
 });
@@ -13,14 +13,11 @@ const updateStudentSchema = createStudentSchema.partial().refine((v) => Object.k
   message: "At least one field is required",
 });
 
-// Return the department alongside its id
-const include = { department: true };
-
 export const studentRouter = Router();
 
 studentRouter.get("/", async (req, res) => {
   const query = memberListQuerySchema.parse(req.query);
-  const where = { ...nameFilter(query.name), departmentId: query.departmentId };
+  const where = { ...userNameFilter(query.name), departmentId: query.departmentId };
 
   const [data, total] = await prisma.$transaction([
     prisma.student.findMany({ where, include, ...paginate(query), orderBy: { id: "asc" } }),
@@ -36,21 +33,41 @@ studentRouter.get("/:id", async (req, res) => {
   res.json(student);
 });
 
+// Creates the user, its student profile and its user_department row in one write
 studentRouter.post("/", async (req, res) => {
-  const data = createStudentSchema.parse(req.body);
-  const student = await prisma.student.create({ data, include });
+  const { firstName, lastName, enrollmentNumber, departmentId } = createStudentSchema.parse(req.body);
+  const { student } = await prisma.user.create({
+    data: {
+      firstName,
+      lastName,
+      userType: "student",
+      student: { create: { enrollmentNumber, departmentId } },
+      departments: { create: { departmentId } },
+    },
+    select: { student: { include } },
+  });
   res.status(201).json(student);
 });
 
 studentRouter.put("/:id", async (req, res) => {
   const { id } = idParamSchema.parse(req.params);
-  const data = updateStudentSchema.parse(req.body);
-  const student = await prisma.student.update({ where: { id }, data, include });
+  const { firstName, lastName, ...data } = updateStudentSchema.parse(req.body);
+
+  const student = await prisma.$transaction(async (tx) => {
+    const { userId } = await tx.student.findUniqueOrThrow({ where: { id }, select: { userId: true } });
+    if (firstName !== undefined || lastName !== undefined) {
+      await tx.user.update({ where: { id: userId }, data: { firstName, lastName } });
+    }
+    if (data.departmentId !== undefined) await setUserDepartment(tx, userId, data.departmentId);
+    return tx.student.update({ where: { id }, data, include });
+  });
   res.json(student);
 });
 
+// Deleting the user cascades to the student and its user_department rows
 studentRouter.delete("/:id", async (req, res) => {
   const { id } = idParamSchema.parse(req.params);
-  await prisma.student.delete({ where: { id } });
+  const { userId } = await prisma.student.findUniqueOrThrow({ where: { id }, select: { userId: true } });
+  await prisma.user.delete({ where: { id: userId } });
   res.status(204).end();
 });

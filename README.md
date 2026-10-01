@@ -12,7 +12,7 @@ That one command:
 
 1. Starts Postgres (also reachable from your machine on `localhost:5433`).
 2. Builds the API image (this generates the Prisma client) and applies the migrations.
-3. Seeds 5 departments, 5 teachers and 500 students with Faker (each student and teacher is put in a random department). If the database already has data, this step is skipped.
+3. Seeds 5 departments and 510 users (10 teachers and 500 students) with Faker. Each student and teacher gets its own user and a random department. If the database already has data, this step is skipped.
 4. Starts the API on http://localhost:3000 and watches your files:
    - **Edits in `src/`** are copied into the container and the server restarts within a couple of seconds.
    - **Changes to `prisma/`, `prisma.config.ts`, `package.json` or `pnpm-lock.yaml`** rebuild the image and restart the API, which applies any new migrations. Your data is kept.
@@ -32,7 +32,7 @@ It runs in the foreground with logs. Press `Ctrl+C` to stop watching, then run `
 | `pnpm docker:up` | Builds and starts the stack with hot reload (foreground) |
 | `pnpm docker:down` | Stops the stack (data is kept) |
 | `pnpm docker:reset` | Deletes the database volume and starts fresh with a new migration, seed and hot reload |
-| `pnpm docker:seed` | Wipes all three tables and reseeds them (IDs restart at 1); run it in a second terminal while the stack is up |
+| `pnpm docker:seed` | Wipes all tables and reseeds them (IDs restart at 1); run it in a second terminal while the stack is up |
 | `pnpm docker:logs` | Follows the API logs (from another terminal) |
 
 ## Endpoints
@@ -41,7 +41,7 @@ It runs in the foreground with logs. Press `Ctrl+C` to stop watching, then run `
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/` | `?page=1&limit=10&name=foo` (limit at most 100; name is a case-insensitive partial match) |
+| GET | `/` | `?page=1&limit=10&name=foo` (limit at most 100; name is a case-insensitive partial match, see [Users](#users)) |
 | GET | `/:id` | 404 if not found |
 | POST | `/` | 201; 409 on a duplicate department `name` or student `enrollmentNumber` |
 | PUT | `/:id` | Partial bodies allowed |
@@ -56,9 +56,20 @@ A list response looks like `{ data: [...], meta: { page, limit, total, totalPage
 - Student and teacher responses include the department: `{ ..., departmentId: 1, department: { id: 1, name: "..." } }`.
 - You can't delete a department while it still has students or teachers (409). Move them to another department or delete them first.
 
+### Users
+
+- Every student and teacher is linked to its own `user` (`first_name`, `last_name`, `user_type` = `student` or `teacher`). Names are stored only on the user.
+- Create and update bodies send the names flat: `{ firstName, lastName, enrollmentNumber, departmentId }` for students, `{ firstName, lastName, designation, expertise, departmentId }` for teachers. Creating a student or teacher also creates its user.
+- Responses include the user: `{ id, ..., userId: 11, user: { id: 11, firstName, lastName, userType }, departmentId, department }`.
+- On students and teachers, `?name=` splits the search into words, and every word has to match part of the first or last name. For example, `?name=ada love` finds Ada Lovelace.
+- Deleting a student or teacher also deletes its user.
+- `user_department` links users to departments. The API keeps it in step with each member's `departmentId`: one row per user, replaced whenever the department changes.
+
 ### Upgrading an existing database
 
 The `add_department` migration keeps your data. If the database already has students or teachers, it creates an `Unassigned` department and puts all of them in it. Because the database isn't empty, the automatic seed is skipped. To get the 5 Faker departments, run `pnpm docker:seed` (this wipes everything and reseeds) or `pnpm docker:reset`.
+
+The `add_user` migration also keeps your data. It creates a user for each existing student and teacher by splitting the old `name` at the first space: the first word becomes `first_name` and the rest becomes `last_name`. It also adds the matching `user_department` rows. The old `name` columns are then dropped.
 
 ## Running locally without the API container
 
@@ -85,7 +96,7 @@ prisma.config.ts   Prisma CLI config (datasource URL, migrations, seed)
 prisma/            schema, migrations, seed
 src/app.ts         express app, routes, swagger
 src/server.ts      entry point
-src/lib/           prisma client (pg adapter), pagination helpers
+src/lib/           prisma client (pg adapter), pagination and user helpers
 src/generated/     generated Prisma client (do not edit)
 src/middleware/    404 and error handling (zod → 400, P2025 → 404, P2002 → 409, P2003 → 400 or 409 on delete)
 src/modules/       department, student and teacher routers
