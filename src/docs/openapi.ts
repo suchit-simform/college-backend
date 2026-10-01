@@ -119,7 +119,7 @@ const teacherProfileFields = {
 };
 
 const departmentIdFilter = {
-  name: "departmentId",
+  name: "department-id",
   in: "query",
   description: "Only return members of this department",
   schema: { type: "integer", minimum: 1 },

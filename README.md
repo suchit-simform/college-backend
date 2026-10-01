@@ -41,7 +41,7 @@ It runs in the foreground with logs. Press `Ctrl+C` to stop watching, then run `
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/` | `?page=1&limit=10&name=foo` (limit at most 100; name is a case-insensitive partial match, see [Users](#users)) |
+| GET | `/` | `?page=1&limit=10&name=foo` (query params are kebab-case; limit at most 100; name is a case-insensitive partial match, see [Users](#users)) |
 | GET | `/:id` | 404 if not found |
 | POST | `/` | 201; 409 on a duplicate department `name` or student `enrollmentNumber` |
 | PUT | `/:id` | Partial bodies allowed |
@@ -52,7 +52,7 @@ A list response looks like `{ data: [...], meta: { page, limit, total, totalPage
 ### Departments
 
 - Every student and teacher belongs to one department. The body of a create request must include `departmentId`. If no department has that id, the API returns 400.
-- Student and teacher lists also take `?departmentId=1` to show only that department's members.
+- Student and teacher lists also take `?department-id=1` to show only that department's members.
 - Student and teacher responses include the department: `{ ..., departmentId: 1, department: { id: 1, name: "..." } }`.
 - You can't delete a department while it still has students or teachers (409). Move them to another department or delete them first.
 

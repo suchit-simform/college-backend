@@ -8,10 +8,11 @@ export const listQuerySchema = z.object({
 
 export type ListQuery = z.infer<typeof listQuerySchema>;
 
-// Students and teachers can also be filtered by department
-export const memberListQuerySchema = listQuerySchema.extend({
-  departmentId: z.coerce.number().int().positive().optional(),
-});
+// Students and teachers can also be filtered by department. Query params are kebab-case,
+// so ?department-id= is renamed to departmentId for the handlers
+export const memberListQuerySchema = listQuerySchema
+  .extend({ "department-id": z.coerce.number().int().positive().optional() })
+  .transform(({ "department-id": departmentId, ...query }) => ({ ...query, departmentId }));
 
 export const idParamSchema = z.object({
   id: z.coerce.number().int().positive(),
