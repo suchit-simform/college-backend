@@ -44,7 +44,7 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
       return;
     }
     // Foreign key: on delete the record is still referenced (onDelete: Restrict),
-    // otherwise the body points at a record that doesn't exist (e.g. unknown departmentId)
+    // otherwise the body points at a record that doesn't exist (e.g. an unknown id in departmentIds)
     if (err.code === "P2003") {
       if (req.method === "DELETE") {
         res.status(409).json({ error: "Record is still referenced by other records" });

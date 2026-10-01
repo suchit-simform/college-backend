@@ -31,47 +31,39 @@ model User {
 
 model Department {
   id       Int              @id @default(autoincrement())
-  name     String           @unique
-  students Student[]
-  teachers Teacher[]
-  users    UserDepartment[]
+  name  String           @unique
+  users UserDepartment[]
 
   @@map("department")
 }
 
 model Student {
-  id               Int        @id @default(autoincrement())
-  enrollmentNumber String     @unique @map("enrollment_number")
-  userId           Int        @unique @map("user_id")
+  id               Int    @id @default(autoincrement())
+  enrollmentNumber String @unique @map("enrollment_number")
+  userId           Int    @unique @map("user_id")
   // Cascade: deleting the user removes its student profile
-  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  departmentId     Int        @map("department_id")
-  // Restrict: a department can't be deleted while students still belong to it
-  department       Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  user             User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([departmentId])
   @@map("student")
 }
 
 model Teacher {
-  id           Int        @id @default(autoincrement())
-  designation  String
-  expertise    String
-  userId       Int        @unique @map("user_id")
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  departmentId Int        @map("department_id")
-  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  id          Int    @id @default(autoincrement())
+  designation String
+  expertise   String
+  userId      Int    @unique @map("user_id")
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([departmentId])
   @@map("teacher")
 }
 
-// Which departments a user belongs to; kept in sync with student/teacher.departmentId by the API
+// The only link between users and departments: a student or teacher can belong to several
 model UserDepartment {
   id           Int        @id @default(autoincrement())
   userId       Int        @map("user_id")
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   departmentId Int        @map("department_id")
+  // Restrict: a department can't be deleted while users still belong to it
   department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
 
   @@unique([userId, departmentId])

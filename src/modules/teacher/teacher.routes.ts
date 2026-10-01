@@ -2,12 +2,20 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { idParamSchema, memberListQuerySchema, paginate, paginationMeta } from "../../lib/pagination";
-import { memberInclude as include, setUserDepartment, userFieldsSchema, userNameFilter } from "../../lib/user";
+import {
+  departmentIdsSchema,
+  departmentLinks,
+  memberFilter,
+  memberInclude as include,
+  setUserDepartments,
+  toMember,
+  userFieldsSchema,
+} from "../../lib/user";
 
 const createTeacherSchema = userFieldsSchema.extend({
   designation: z.string().trim().min(1),
   expertise: z.string().trim().min(1),
-  departmentId: z.number().int().positive(),
+  departmentIds: departmentIdsSchema,
 });
 
 const updateTeacherSchema = createTeacherSchema.partial().refine((v) => Object.keys(v).length > 0, {
@@ -18,51 +26,52 @@ export const teacherRouter = Router();
 
 teacherRouter.get("/", async (req, res) => {
   const query = memberListQuerySchema.parse(req.query);
-  const where = { ...userNameFilter(query.name), departmentId: query.departmentId };
+  const where = memberFilter(query);
 
-  const [data, total] = await prisma.$transaction([
+  const [teachers, total] = await prisma.$transaction([
     prisma.teacher.findMany({ where, include, ...paginate(query), orderBy: { id: "asc" } }),
     prisma.teacher.count({ where }),
   ]);
 
-  res.json({ data, meta: paginationMeta(query, total) });
+  res.json({ data: teachers.map(toMember), meta: paginationMeta(query, total) });
 });
 
 teacherRouter.get("/:id", async (req, res) => {
   const { id } = idParamSchema.parse(req.params);
   const teacher = await prisma.teacher.findUniqueOrThrow({ where: { id }, include });
-  res.json(teacher);
+  res.json(toMember(teacher));
 });
 
-// Creates the user, its teacher profile and its user_department row in one write
+// Creates the user, its teacher profile and its user_department rows in one write
 teacherRouter.post("/", async (req, res) => {
-  const { firstName, lastName, designation, expertise, departmentId } = createTeacherSchema.parse(req.body);
+  const { firstName, lastName, designation, expertise, departmentIds } = createTeacherSchema.parse(req.body);
   const { teacher } = await prisma.user.create({
     data: {
       firstName,
       lastName,
       userType: "teacher",
-      teacher: { create: { designation, expertise, departmentId } },
-      departments: { create: { departmentId } },
+      teacher: { create: { designation, expertise } },
+      departments: departmentLinks(departmentIds),
     },
     select: { teacher: { include } },
   });
-  res.status(201).json(teacher);
+  res.status(201).json(toMember(teacher!));
 });
 
+// departmentIds, when sent, replaces the teacher's departments
 teacherRouter.put("/:id", async (req, res) => {
   const { id } = idParamSchema.parse(req.params);
-  const { firstName, lastName, ...data } = updateTeacherSchema.parse(req.body);
+  const { firstName, lastName, departmentIds, ...data } = updateTeacherSchema.parse(req.body);
 
   const teacher = await prisma.$transaction(async (tx) => {
     const { userId } = await tx.teacher.findUniqueOrThrow({ where: { id }, select: { userId: true } });
     if (firstName !== undefined || lastName !== undefined) {
       await tx.user.update({ where: { id: userId }, data: { firstName, lastName } });
     }
-    if (data.departmentId !== undefined) await setUserDepartment(tx, userId, data.departmentId);
+    if (departmentIds !== undefined) await setUserDepartments(tx, userId, departmentIds);
     return tx.teacher.update({ where: { id }, data, include });
   });
-  res.json(teacher);
+  res.json(toMember(teacher));
 });
 
 // Deleting the user cascades to the teacher and its user_department rows

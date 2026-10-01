@@ -12,7 +12,7 @@ That one command:
 
 1. Starts Postgres (also reachable from your machine on `localhost:5433`).
 2. Builds the API image (this generates the Prisma client) and applies the migrations.
-3. Seeds 5 departments and 510 users (10 teachers and 500 students) with Faker. Each student and teacher gets its own user and a random department. If the database already has data, this step is skipped.
+3. Seeds 5 departments and 510 users (10 teachers and 500 students) with Faker. Each student and teacher gets its own user. Students are linked to 1 random department and teachers to 1 or 2, through `user_department`. If the database already has data, this step is skipped.
 4. Starts the API on http://localhost:3000 and watches your files:
    - **Edits in `src/`** are copied into the container and the server restarts within a couple of seconds.
    - **Changes to `prisma/`, `prisma.config.ts`, `package.json` or `pnpm-lock.yaml`** rebuild the image and restart the API, which applies any new migrations. Your data is kept.
@@ -51,25 +51,27 @@ A list response looks like `{ data: [...], meta: { page, limit, total, totalPage
 
 ### Departments
 
-- Every student and teacher belongs to one department. The body of a create request must include `departmentId`. If no department has that id, the API returns 400.
-- Student and teacher lists also take `?department-id=1` to show only that department's members.
-- Student and teacher responses include the department: `{ ..., departmentId: 1, department: { id: 1, name: "..." } }`.
-- You can't delete a department while it still has students or teachers (409). Move them to another department or delete them first.
+- Students and teachers are linked to departments only through `user_department`, so a member can belong to several. The body of a create request must include `departmentIds` (at least one id; duplicates are ignored). If any id doesn't match a department, the API returns 400.
+- On update, sending `departmentIds` replaces the member's departments. Leave it out to keep them as they are.
+- Student and teacher lists also take `?department-id=1` to show only members linked to that department.
+- Student and teacher responses list the departments: `{ ..., departments: [{ id: 1, name: "..." }] }`.
+- You can't delete a department while users are still linked to it (409). Move them to another department or delete them first.
 
 ### Users
 
 - Every student and teacher is linked to its own `user` (`first_name`, `last_name`, `user_type` = `student` or `teacher`). Names are stored only on the user.
-- Create and update bodies send the names flat: `{ firstName, lastName, enrollmentNumber, departmentId }` for students, `{ firstName, lastName, designation, expertise, departmentId }` for teachers. Creating a student or teacher also creates its user.
-- Responses include the user: `{ id, ..., userId: 11, user: { id: 11, firstName, lastName, userType }, departmentId, department }`.
+- Create and update bodies send the names flat: `{ firstName, lastName, enrollmentNumber, departmentIds }` for students, `{ firstName, lastName, designation, expertise, departmentIds }` for teachers. Creating a student or teacher also creates its user.
+- Responses include the user: `{ id, ..., userId: 11, user: { id: 11, firstName, lastName, userType }, departments: [...] }`.
 - On students and teachers, `?name=` splits the search into words, and every word has to match part of the first or last name. For example, `?name=ada love` finds Ada Lovelace.
 - Deleting a student or teacher also deletes its user.
-- `user_department` links users to departments. The API keeps it in step with each member's `departmentId`: one row per user, replaced whenever the department changes.
 
 ### Upgrading an existing database
 
 The `add_department` migration keeps your data. If the database already has students or teachers, it creates an `Unassigned` department and puts all of them in it. Because the database isn't empty, the automatic seed is skipped. To get the 5 Faker departments, run `pnpm docker:seed` (this wipes everything and reseeds) or `pnpm docker:reset`.
 
 The `add_user` migration also keeps your data. It creates a user for each existing student and teacher by splitting the old `name` at the first space: the first word becomes `first_name` and the rest becomes `last_name`. It also adds the matching `user_department` rows. The old `name` columns are then dropped.
+
+The `user_department_only` migration drops `department_id` from `student` and `teacher`. Before dropping it, it copies any department link that `user_department` doesn't already have, so no memberships are lost.
 
 ## Running locally without the API container
 

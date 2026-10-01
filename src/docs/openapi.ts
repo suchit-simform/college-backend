@@ -75,7 +75,7 @@ function crudPaths(tag: string, basePath: string, schema: string, options: CrudO
           204: { description: "Deleted" },
           ...errors,
           ...(options.deleteConflict && {
-            409: { description: "Still referenced by students or teachers", content: json(ref("Error")) },
+            409: { description: "Still linked to users through user_department", content: json(ref("Error")) },
           }),
         },
       },
@@ -92,9 +92,14 @@ const departmentFields = {
   name: { type: "string", example: "Computer Engineering" },
 };
 
-// departmentId must point at an existing department, otherwise create/update returns 400
-const departmentIdField = { departmentId: { type: "integer", example: 1 } };
-const departmentRef = { department: { $ref: "#/components/schemas/Department" } };
+// Every id must point at an existing department, otherwise create/update returns 400.
+// On update, sending departmentIds replaces the member's departments
+const departmentIdsField = {
+  departmentIds: { type: "array", minItems: 1, items: { type: "integer" }, example: [1] },
+};
+const departmentsRef = {
+  departments: { type: "array", items: { $ref: "#/components/schemas/Department" } },
+};
 
 // Names are sent flat on create/update but stored on the linked user, returned as `user`
 const nameFields = {
@@ -109,19 +114,17 @@ const userRef = { userId: { type: "integer", example: 1 }, user: { $ref: "#/comp
 
 const studentProfileFields = {
   enrollmentNumber: { type: "string", example: "ENR202600001" },
-  ...departmentIdField,
 };
 
 const teacherProfileFields = {
   designation: { type: "string", example: "Professor" },
   expertise: { type: "string", example: "Computer Science" },
-  ...departmentIdField,
 };
 
 const departmentIdFilter = {
   name: "department-id",
   in: "query",
-  description: "Only return members of this department",
+  description: "Only return members linked to this department",
   schema: { type: "integer", minimum: 1 },
 };
 
@@ -145,10 +148,10 @@ export const openApiSpec = {
       Department: objectSchema(departmentFields, true),
       DepartmentInput: objectSchema(departmentFields, false),
       User: objectSchema(userFields, true),
-      Student: objectSchema({ ...studentProfileFields, ...userRef, ...departmentRef }, true),
-      StudentInput: objectSchema({ ...nameFields, ...studentProfileFields }, false),
-      Teacher: objectSchema({ ...teacherProfileFields, ...userRef, ...departmentRef }, true),
-      TeacherInput: objectSchema({ ...nameFields, ...teacherProfileFields }, false),
+      Student: objectSchema({ ...studentProfileFields, ...userRef, ...departmentsRef }, true),
+      StudentInput: objectSchema({ ...nameFields, ...studentProfileFields, ...departmentIdsField }, false),
+      Teacher: objectSchema({ ...teacherProfileFields, ...userRef, ...departmentsRef }, true),
+      TeacherInput: objectSchema({ ...nameFields, ...teacherProfileFields, ...departmentIdsField }, false),
       PaginationMeta: {
         type: "object",
         properties: {

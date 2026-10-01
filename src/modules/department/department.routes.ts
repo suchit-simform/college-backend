@@ -44,7 +44,7 @@ departmentRouter.put("/:id", async (req, res) => {
   res.json(department);
 });
 
-// Fails with 409 while students or teachers still belong to the department (onDelete: Restrict)
+// Fails with 409 while users are still linked to the department (user_department onDelete: Restrict)
 departmentRouter.delete("/:id", async (req, res) => {
   const { id } = idParamSchema.parse(req.params);
   await prisma.department.delete({ where: { id } });

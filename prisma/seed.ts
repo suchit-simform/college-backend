@@ -64,30 +64,34 @@ async function main() {
   const departmentIds = (await prisma.department.findMany({ select: { id: true } })).map((d) => d.id);
 
   const teacherUserIds = await createUsers(TEACHER_COUNT, "teacher");
-  const teachers = teacherUserIds.map((userId) => ({
-    userId,
-    designation: faker.helpers.arrayElement(DESIGNATIONS),
-    expertise: faker.helpers.arrayElement(EXPERTISE),
-    departmentId: faker.helpers.arrayElement(departmentIds),
-  }));
-  await prisma.teacher.createMany({ data: teachers });
+  await prisma.teacher.createMany({
+    data: teacherUserIds.map((userId) => ({
+      userId,
+      designation: faker.helpers.arrayElement(DESIGNATIONS),
+      expertise: faker.helpers.arrayElement(EXPERTISE),
+    })),
+  });
 
   const studentUserIds = await createUsers(STUDENT_COUNT, "student");
-  const students = studentUserIds.map((userId, i) => ({
-    userId,
-    enrollmentNumber: `ENR${new Date().getFullYear()}${String(i + 1).padStart(5, "0")}`,
-    departmentId: faker.helpers.arrayElement(departmentIds),
-  }));
-  await prisma.student.createMany({ data: students });
-
-  // user_department mirrors each member's department
-  await prisma.userDepartment.createMany({
-    data: [...teachers, ...students].map(({ userId, departmentId }) => ({ userId, departmentId })),
+  await prisma.student.createMany({
+    data: studentUserIds.map((userId, i) => ({
+      userId,
+      enrollmentNumber: `ENR${new Date().getFullYear()}${String(i + 1).padStart(5, "0")}`,
+    })),
   });
+
+  // user_department is the only link to departments: teachers get 1-2, students get 1
+  const links = [
+    ...teacherUserIds.flatMap((userId) =>
+      faker.helpers.arrayElements(departmentIds, { min: 1, max: 2 }).map((departmentId) => ({ userId, departmentId })),
+    ),
+    ...studentUserIds.map((userId) => ({ userId, departmentId: faker.helpers.arrayElement(departmentIds) })),
+  ];
+  await prisma.userDepartment.createMany({ data: links });
 
   console.log(
     `Seeded ${DEPARTMENT_COUNT} departments, ${TEACHER_COUNT + STUDENT_COUNT} users ` +
-      `(${TEACHER_COUNT} teachers, ${STUDENT_COUNT} students) and their user_department rows`,
+      `(${TEACHER_COUNT} teachers, ${STUDENT_COUNT} students) and ${links.length} user_department rows`,
   );
 }
 

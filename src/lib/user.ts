@@ -7,27 +7,46 @@ export const userFieldsSchema = z.object({
   lastName: z.string().trim().min(1),
 });
 
-// Return the user and department alongside their ids
-export const memberInclude = { user: true, department: true } as const;
+// Departments are linked through user_department, so a member can belong to several (duplicates dropped)
+export const departmentIdsSchema = z
+  .array(z.number().int().positive())
+  .min(1)
+  .transform((ids) => [...new Set(ids)]);
 
-// Every word must match the first or last name, so "ada love" finds "Ada Lovelace"
-export function userNameFilter(name?: string) {
-  if (!name) return {};
-  const words = name.split(/\s+/).filter(Boolean);
-  return {
-    user: {
-      AND: words.map((word) => ({
-        OR: [
-          { firstName: { contains: word, mode: "insensitive" as const } },
-          { lastName: { contains: word, mode: "insensitive" as const } },
-        ],
-      })),
-    },
-  };
+// Load the user and its departments alongside the member
+export const memberInclude = {
+  user: { include: { departments: { include: { department: true }, orderBy: { departmentId: "asc" } } } },
+} as const;
+
+type MemberRow = {
+  user: { departments: { department: { id: number; name: string } }[] };
+};
+
+// Flatten user.departments[].department into a top-level departments list
+export function toMember<T extends MemberRow>({ user: { departments, ...user }, ...member }: T) {
+  return { ...member, user, departments: departments.map((d) => d.department) };
 }
 
-// user_department mirrors the member's department: replace the user's row with the new one
-export async function setUserDepartment(tx: Prisma.TransactionClient, userId: number, departmentId: number) {
+// Every word must match the first or last name, so "ada love" finds "Ada Lovelace".
+// With a departmentId, only users linked to that department through user_department match
+export function memberFilter({ name, departmentId }: { name?: string; departmentId?: number }) {
+  const words = name?.split(/\s+/).filter(Boolean) ?? [];
+  const conditions: Prisma.UserWhereInput[] = words.map((word) => ({
+    OR: [
+      { firstName: { contains: word, mode: "insensitive" } },
+      { lastName: { contains: word, mode: "insensitive" } },
+    ],
+  }));
+  if (departmentId !== undefined) conditions.push({ departments: { some: { departmentId } } });
+  return conditions.length ? { user: { AND: conditions } } : {};
+}
+
+export function departmentLinks(departmentIds: number[]) {
+  return { createMany: { data: departmentIds.map((departmentId) => ({ departmentId })) } };
+}
+
+// Replace the user's user_department rows with the given departments
+export async function setUserDepartments(tx: Prisma.TransactionClient, userId: number, departmentIds: number[]) {
   await tx.userDepartment.deleteMany({ where: { userId } });
-  await tx.userDepartment.create({ data: { userId, departmentId } });
+  await tx.userDepartment.createMany({ data: departmentIds.map((departmentId) => ({ userId, departmentId })) });
 }
